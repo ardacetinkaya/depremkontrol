@@ -13,7 +13,6 @@ namespace Earthquake.Checker
     using System.Threading;
     using System.Threading.Tasks;
 
-
     public class Worker : BackgroundService
     {
         private readonly IHostApplicationLifetime _appLifetime;
@@ -48,20 +47,32 @@ namespace Earthquake.Checker
 
 
                     HttpResponseMessage result = await client.GetAsync(@$"{_settings.Value.URL}");
+                    
+                    if (!result.IsSuccessStatusCode) continue; //Re-try
+                    
                     string content = await result.Content.ReadAsStringAsync();
                     
                     if (string.IsNullOrEmpty(content)) continue; //Re-try
                     
                     doc.LoadHtml(content);
 
+                    //Get <pre> tag from HTML document
                     HtmlNode contentData = doc.DocumentNode.SelectSingleNode($"{_settings.Value.HtmlParseTag}");
 
                     if (contentData != null)
                     {
+                        //Remove some unnecessary data
                         int start = contentData.InnerText.IndexOf("-------", 0);
-
                         string[] lines = contentData.InnerText.Substring(start).Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
 
+                        /**
+                        Content of lines is like, so need the fetch data.
+                        
+                            2019.09.27 16:35:47  40.4215   26.0910       11.7 -.- 4.1  3.9   SAROS KORFEZI(EGE DENIZI)                        İlksel
+                         
+                        Process the line with RegularExpression pattern and map it to a DTO.
+
+                         */
                         foreach (var item in lines.Skip(1))//Skip first line
                         {
                             Match match = dataParts.Match(item);
@@ -78,6 +89,8 @@ namespace Earthquake.Checker
                                     Place = match.Groups[9].Value.Trim()
                                 };
 
+                                //Check if data is already added into a data repository
+                                //TODO: Make a storage like DB
                                 EarthquakeData lastEarthquake = _data.FirstOrDefault();
                                 if (lastEarthquake != null && (lastEarthquake.Date == data.Date && lastEarthquake.Time == data.Time))
                                 {
@@ -86,6 +99,7 @@ namespace Earthquake.Checker
                                 }
                                 else
                                 {
+                                    //Add data into a data repository
                                     _data.Add(data);
 
                                     //If there is commandline argument as --alert 5 as magnitude, display a warning message
@@ -107,6 +121,7 @@ namespace Earthquake.Checker
 
                     }
 
+                    //Wait a little bit for next check
                     await Task.Delay(_settings.Value.Period, stoppingToken);
                 }
             }
