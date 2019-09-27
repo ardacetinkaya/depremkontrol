@@ -1,17 +1,25 @@
 namespace Earthquake.Checker
 {
     using HtmlAgilityPack;
+    using Microsoft.Azure.Devices.Client;
+    using Microsoft.Azure.Devices.Shared;
+    using Microsoft.Azure.Devices.Provisioning.Client;
+    using Microsoft.Azure.Devices.Provisioning.Client.Transport;
     using Microsoft.Extensions.Configuration;
     using Microsoft.Extensions.Hosting;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
     using System;
     using System.Collections.Generic;
+    using System.Text;
+    using System.Text.Json;
     using System.Linq;
     using System.Net.Http;
     using System.Text.RegularExpressions;
     using System.Threading;
     using System.Threading.Tasks;
+    using Newtonsoft.Json;
+
 
     public class Worker : BackgroundService
     {
@@ -20,6 +28,12 @@ namespace Earthquake.Checker
         private readonly IOptions<WorkerSettings> _settings;
         private readonly IConfiguration _configuration;
 
+        private readonly string ScopeID = string.Empty;
+        private readonly string DeviceID = string.Empty;
+        private readonly string PrimaryKey = string.Empty;
+        private readonly string GlobalDeviceEndpoint = string.Empty;
+        private DeviceClient _deviceClient = null;
+        private TwinCollection _reportProperties = new TwinCollection();
         private List<EarthquakeData> _data;
         public Worker(ILogger<Worker> logger, IOptions<WorkerSettings> settings, IHostApplicationLifetime appLifetime, IConfiguration configuration)
         {
@@ -27,18 +41,57 @@ namespace Earthquake.Checker
             _settings = settings;
             _logger = logger;
             _configuration = configuration;
-            
-            _data = new List<EarthquakeData>();
-        }
 
+            DeviceID = _settings.Value.DeviceID;
+            ScopeID = _settings.Value.ScopeID;
+            PrimaryKey = _settings.Value.PrimaryKey;
+            GlobalDeviceEndpoint = _settings.Value.GlobalDeviceEndpoint;
+
+            _data = new List<EarthquakeData>();
+
+        }
+        private async Task<bool> Init()
+        {
+            try
+            {
+                using (var security = new SecurityProviderSymmetricKey(DeviceID, PrimaryKey, null))
+                {
+                    DeviceRegistrationResult result = await RegisterDeviceAsync(security);
+                    if (result.Status != ProvisioningRegistrationStatusType.Assigned)
+                    {
+                        _logger.LogInformation("{time} - Failed to register device", DateTimeOffset.Now);
+
+                        return false;
+                    }
+                    IAuthenticationMethod auth = new DeviceAuthenticationWithRegistrySymmetricKey(result.DeviceId, (security as SecurityProviderSymmetricKey).GetPrimaryKey());
+                    _deviceClient = DeviceClient.Create(result.AssignedHub, auth, TransportType.Mqtt);
+                }
+
+                await SendDevicePropertiesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"{DateTimeOffset.Now} - Error:{ex.Message}");
+                return false;
+            }
+
+            return true;
+        }
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _appLifetime.ApplicationStarted.Register(OnStarted);
             _appLifetime.ApplicationStopping.Register(OnStopping);
             _appLifetime.ApplicationStopped.Register(OnStopped);
 
+            var isInitialized = await Init();
+            if (!isInitialized)
+            {
+                _appLifetime.StopApplication();
+            }
             try
             {
+                Random rand = new Random();
+
                 while (!stoppingToken.IsCancellationRequested)
                 {
                     var client = new HttpClient();
@@ -47,13 +100,13 @@ namespace Earthquake.Checker
 
 
                     HttpResponseMessage result = await client.GetAsync(@$"{_settings.Value.URL}");
-                    
+
                     if (!result.IsSuccessStatusCode) continue; //Re-try
-                    
+
                     string content = await result.Content.ReadAsStringAsync();
-                    
+
                     if (string.IsNullOrEmpty(content)) continue; //Re-try
-                    
+
                     doc.LoadHtml(content);
 
                     //Get <pre> tag from HTML document
@@ -104,11 +157,23 @@ namespace Earthquake.Checker
 
                                     //If there is commandline argument as --alert 5 as magnitude, display a warning message
                                     double alert = _configuration.GetValue<double>("alert");
-                                    
+
                                     if (alert != 0 && data.Magnitude >= alert)
                                     {
                                         _logger.LogInformation($"{DateTimeOffset.Now} - !!!WARNING!!! EARTHQUAKE - {data.Magnitude} at {data.Place}");
                                     }
+
+                                    var telemetryData = new
+                                    {
+                                        latitude = data.Latitude,
+                                        longitude = data.Longitude,
+                                        magnitude = data.Magnitude
+                                    };
+
+                                    var telemetryDataString = JsonConvert.SerializeObject(telemetryData);
+                                    var telemetryMessage = new Message(Encoding.ASCII.GetBytes(telemetryDataString));
+                                    await _deviceClient.SendEventAsync(telemetryMessage);
+                                    _logger.LogInformation("{time} - Event data is sent.", DateTimeOffset.Now);
                                 }
                             }
                             else
@@ -150,6 +215,34 @@ namespace Earthquake.Checker
         {
             _logger.LogInformation("{time} - Worker started.", DateTimeOffset.Now);
             //Do some pre-work
+        }
+
+        private async Task<DeviceRegistrationResult> RegisterDeviceAsync(SecurityProviderSymmetricKey security)
+        {
+            _logger.LogInformation("{time} - Register device...", DateTimeOffset.Now);
+
+            using (var transport = new ProvisioningTransportHandlerMqtt(TransportFallbackType.TcpOnly))
+            {
+                ProvisioningDeviceClient provClient = ProvisioningDeviceClient.Create(GlobalDeviceEndpoint, ScopeID, security, transport);
+                _logger.LogInformation($"{DateTimeOffset.Now} - RegistrationID = {security.GetRegistrationID()}");
+
+                DeviceRegistrationResult result = await provClient.RegisterAsync();
+
+                _logger.LogInformation($"{DateTimeOffset.Now} - ProvisioningClient AssignedHub: {result.AssignedHub}; DeviceID: {result.DeviceId}");
+
+                return result;
+            }
+        }
+
+        private async Task SendDevicePropertiesAsync()
+        {
+            _logger.LogInformation("{time} - Send device properties...", DateTimeOffset.Now);
+
+            Random random = new Random();
+            var telemetryConfig = new TwinCollection();
+            _reportProperties["dieNumber"] = random.Next(1, 6);
+
+            await _deviceClient.UpdateReportedPropertiesAsync(_reportProperties);
         }
     }
 }

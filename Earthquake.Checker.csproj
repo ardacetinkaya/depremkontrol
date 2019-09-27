@@ -9,6 +9,9 @@
 
   <ItemGroup>
     <PackageReference Include="HtmlAgilityPack.NetCore" Version="1.5.0.1" />
+    <PackageReference Include="Microsoft.Azure.Devices.Client" Version="1.21.1" />
+    <PackageReference Include="Microsoft.Azure.Devices.Provisioning.Client" Version="1.4.0" />
+    <PackageReference Include="Microsoft.Azure.Devices.Provisioning.Transport.Mqtt" Version="1.1.8" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="3.0.0" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.9.5" />
   </ItemGroup>
