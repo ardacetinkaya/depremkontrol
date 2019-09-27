@@ -63,7 +63,7 @@ namespace Earthquake.Checker
                     {
                         //Remove some unnecessary data
                         int start = contentData.InnerText.IndexOf("-------", 0);
-                        string[] lines = contentData.InnerText.Substring(start).Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+                        string[] lines = contentData.InnerText.Substring(start).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
 
                         /**
                         Content of lines is like, so need the fetch data.
