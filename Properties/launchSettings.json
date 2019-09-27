@@ -1,0 +1,14 @@
+{
+  "profiles": {
+    "EarthquakeCheck": {
+      "commandName": "Project",
+      "commandLineArgs": "--alert 5",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    },
+    "Docker": {
+      "commandName": "Docker"
+    }
+  }
+}
