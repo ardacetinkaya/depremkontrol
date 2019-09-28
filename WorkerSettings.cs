@@ -10,6 +10,8 @@
         public string DeviceID { get; set; }
         public string PrimaryKey { get; set; }
         public string GlobalDeviceEndpoint { get; set; }
+        public string LocalDeviceEndpoint { get; set; }
+        public string Version { get; set; }
 
 
     }
