@@ -1,0 +1,12 @@
+[Unit]
+Description=Earthquake Checker Demo
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/projects/earthquake-checker/publish/
+ExecStart=/home/pi/dotnet/dotnet /home/pi/projects/earthquake-checker/publish/Earthquake.Checker.dll --alert 3
+KillSignal=SIGINT
+SyslogIdentifier=earthquake-checker-demo
+
+[Install]
+WantedBy=multi-user.target
