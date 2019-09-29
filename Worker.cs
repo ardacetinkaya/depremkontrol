@@ -142,7 +142,7 @@ namespace Earthquake.Checker
                                     Longitude = double.Parse(match.Groups[4].Value.Trim()),
                                     Depth = double.Parse(match.Groups[5].Value.Trim()),
                                     Magnitude = double.Parse(match.Groups[7].Value.Trim()),
-                                    Place = match.Groups[9].Value.Trim()
+                                    Region = match.Groups[9].Value.Trim()
                                 };
 
                                 //Check if data is already added into a data repository
@@ -155,10 +155,11 @@ namespace Earthquake.Checker
                                 }
                                 else
                                 {
-                                    //Add data into a data repository
+                                    //Add data into a some data repository
+                                    //To keep things simple in this demo, just a collection is OK
                                     _data.Add(data);
 
-                                    await CheckAlert(data.Magnitude,data.Place);
+                                    await CheckAlert(data.Magnitude,data.Region);
                                 }
                             }
                             else
